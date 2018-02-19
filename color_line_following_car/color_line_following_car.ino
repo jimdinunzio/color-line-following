@@ -18,9 +18,14 @@ enum Direction {
   D_RIGHT
 };
 
+enum RunMode {
+  RM_FOLLOWING_LINE,
+  RM_VERIFYING_COLOR_CHANGED,
+  RM_SEARCHING_FOR_COLOR
+};
+
 // order of colored line following
 LineColor lc_follow_order[] = { LC_BLACK, LC_RED, LC_BLUE, LC_GREEN, LC_WHITE };
-int lc_follow_index = 0;
 
 // Line color detection logic
 #define isItRed(r, g, b) ((r) >= 128 && (r) - (g) > 30)
@@ -179,6 +184,9 @@ void halt()
 LineColor last_known_lc = LC_UNKNOWN;
 boolean lastColor = false;
 Direction lastDirection = D_FORWARD;
+RunMode runMode = RM_FOLLOWING_LINE; 
+int lc_follow_index = 0;
+int lc_color_changed_count = 0;
 
 void loop()
 {
@@ -214,14 +222,14 @@ void loop()
   //Serial.print((int)r, HEX); Serial.print((int)g, HEX); Serial.print((int)b, HEX);
   //Serial.println();
 
-  Serial.print((int)r );
-  Serial.print(" ");
-  Serial.print((int)g);
-  Serial.print(" "); 
-  Serial.print((int)b );
-  Serial.print(" ");
-  Serial.print((int)clear);
-  Serial.print(" ");
+  //Serial.print((int)r );
+  //Serial.print(" ");
+  //Serial.print((int)g);
+  //Serial.print(" "); 
+  //Serial.print((int)b );
+  //Serial.print(" ");
+  //Serial.print((int)clear);
+  //Serial.print(" ");
     
   boolean detectedRed = isItRed(r, g, b);
   boolean detectedGreen = isItGreen(r, g, b);
@@ -258,8 +266,8 @@ void loop()
   if (current_lc == LC_UNKNOWN || current_lc == LC_WHITE)
     check_lc = last_known_lc;
     
-  Serial.print("LT_R = "); Serial.print(ltr);
-  Serial.print(" LT_L = "); Serial.print(ltl);
+//  Serial.print("LT_R = "); Serial.print(ltr);
+//  Serial.print(" LT_L = "); Serial.print(ltl);
   Serial.print(" Color = ");
   if (current_lc == LC_BLACK)
     Serial.print("Black");
@@ -275,6 +283,22 @@ void loop()
     Serial.print("Unknown");
   Serial.print(":  ");
   
+  if (runMode == RM_SEARCHING_FOR_COLOR)
+  {
+	  if (current_lc != lc_follow_order[lc_follow_index])
+	  {
+	    Serial.println("Searching, but have not found next color.");
+	    right();
+	    return;
+	  }
+	  else  // we've found the new color !
+	  {
+	    Serial.println("FOUND next color, resuming line following.");
+	    runMode = RM_FOLLOWING_LINE;
+	    // fall through to normal line following code
+	  }
+  }
+  
   // Basic line following logic  
   if(shouldGoRight(check_lc, ltl, ltr)) { 
     right();
@@ -284,7 +308,46 @@ void loop()
     left();
     lastDirection = D_LEFT;
   }
-  else if(current_lc != LC_WHITE){
+  else if(current_lc != LC_WHITE) 
+  {
+	  if (runMode == RM_FOLLOWING_LINE 
+	      && current_lc != LC_UNKNOWN 
+	      && current_lc != lc_follow_order[lc_follow_index])
+	  {
+      // Color has changed, verify this over the next 2 iterations
+      runMode = RM_VERIFYING_COLOR_CHANGED;
+      Serial.println("runMode now VERIFYING_COLOR_CHANGED");
+	    lc_color_changed_count = 1;
+	  }
+	  else if (runMode == RM_VERIFYING_COLOR_CHANGED)
+	  {
+      if (current_lc != LC_UNKNOWN)
+	    {
+        if (current_lc != lc_follow_order[lc_follow_index])
+		    {
+		      lc_color_changed_count++;
+		      Serial.println("color changed count ++");
+		      if (lc_color_changed_count > 2)
+		      {
+			      runMode = RM_SEARCHING_FOR_COLOR;
+			      Serial.println("runMode now SEARCHING_FOR_COLOR");
+		  	    lc_color_changed_count = 0;
+			      lc_follow_index++;
+			      right();
+			      return;
+          }
+		    }
+		    else
+        {
+          // false alarm color did not stay changed
+		      lc_color_changed_count = 0;
+		      runMode = RM_FOLLOWING_LINE;
+		      Serial.println("false alarm, runMode restored to FOLLOWING_LINE");
+          // fall through and continue forward
+        }
+	    }
+	  }
+	
     forward();
     lastDirection = D_FORWARD;
     last_known_lc = current_lc;
