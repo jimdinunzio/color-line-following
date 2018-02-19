@@ -119,16 +119,17 @@ bool shouldGoLeft(LineColor color, int ltl, int ltr)
 Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_50MS, TCS34725_GAIN_4X);
 
 
-//#define carStartupSpeed 90
-//#define carSpeed 75
-//#define carTurningSpeed 135
-//#define carSearchTurningSpeed 150
+#define carStartupSpeed 90
+#define carSpeed 75
+#define carTurningSpeed 135
+#define carSearchTurningSpeed 160
+#define carLostLineTurningSpeed 160
 
 // For full battery
-#define carStartupSpeed 90
-#define carSpeed 70
-#define carTurningSpeed 135
-#define carSearchTurningSpeed 146
+//#define carStartupSpeed 90
+//#define carSpeed 70
+//#define carTurningSpeed 135
+//#define carSearchTurningSpeed 146
 
 void forward(int speedIn){
   analogWrite(ENA, speedIn);
@@ -352,7 +353,8 @@ void loop()
       last_known_lc = lc_follow_order[orderIndex][lc_follow_index]; 
       if (current_lc == LC_UNKNOWN || current_lc == LC_WHITE)
         check_lc = last_known_lc;
-      Serial.println("FOUND next color, now returning to line following mode.");    
+      Serial.println("FOUND next color, now returning to line following mode.");
+      startupSpeedCount = 2;    
       // fall through to normal line following code
 	  }
   }
@@ -364,12 +366,12 @@ void loop()
       searchForLineCount++;
       if (searchForLineCount < 0)
       {
-        right(carTurningSpeed);
+        right(carLostLineTurningSpeed);
         lastDirection = D_RIGHT;
       }
       else if (searchForLineCount < 40)
       {
-        left(carTurningSpeed);
+        left(carLostLineTurningSpeed);
         lastDirection = D_LEFT;
       } 
       else // searchForLineCount > 40
@@ -386,7 +388,17 @@ void loop()
       // fall through to normal line following code
     }
   }
-  
+
+// Logic to detect end blob, not fully tested or confident
+//  if (lc_follow_index == lc_follow_index_last)
+//  {
+//    if (ltl < 670 && ltr < 570)
+//    { // if last color and hit the color blob, then halt.
+//      halt();
+//      return;
+//    }  
+//  }
+
   // Basic line following logic  
   if(shouldGoRight(check_lc, ltl, ltr)) { 
     right(carTurningSpeed);
