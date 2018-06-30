@@ -66,7 +66,7 @@ int lc_follow_index_last = sizeof(lc_follow_order[0]) / sizeof(LineColor) - 1;
 #define isItBlack(c) ((c) < 2000)
 #define isItWhite(c) ((c) > 15000)
 
-#define MinNumLoopItersVerifyColorChanged 7
+#define MinNumLoopItersVerifyColorChanged 2
 // Pins
 // Analog
 #define AnalogLTL A0
@@ -80,17 +80,25 @@ int lc_follow_index_last = sizeof(lc_follow_order[0]) / sizeof(LineColor) - 1;
 #define IN3 9
 #define IN4 11
 
-//Line Tracking IO define
+//Line Tracking IO define, LT_L -> gray wire, LT_R -> orange wire
 #define LT_L analogRead(AnalogLTL)
 #define LT_R analogRead(AnalogLTR)
 
+// tcs34725 rgb sensor
+/* Connect SCL  (white wire)  to analog 5
+   Connect SDA  (orange wire)  to analog 4
+   Connect VDD    to 3.3V DC
+   Connect GROUND to common ground */
 
 // Pick analog outputs, for the UNO these three work well
 // use ~560  ohm resistor between Red & Blue, ~1K for green (its brighter)
+// redLed -> brown wire
+// greenLed -> green wire
+// blueLed -> blue wire
 #define redLedPin 3
 #define greenLedPin 12
 #define blueLedPin 13
-// for a common anode LED, connect the common pin to +5V
+// for a common anode LED, connect the common pin to +5V -> red wire
 // for common cathode, connect the common to ground
 
 // set to false if using a common cathode LED
@@ -144,10 +152,10 @@ Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_50MS, TCS3472
 
 
 #define carStartupSpeed 90
-#define carSpeed 75
-#define carTurningSpeed 135
-#define carSearchTurningSpeed 160
-#define carLostLineTurningSpeed 160
+#define carSpeed 85
+#define carTurningSpeed 140
+#define carSearchTurningSpeed 155
+#define carLostLineTurningSpeed 155
 
 // For full battery
 //#define carStartupSpeed 90
@@ -205,7 +213,7 @@ void stop(){
 int orderIndex = 0;
 LineColor last_known_lc = lc_follow_order[orderIndex][0];
 Direction lastDirection = D_FORWARD;
-RunMode runMode = RM_FOLLOWING_LINE; 
+RunMode runMode = RM_HALTED; 
 int lc_follow_index = 0;
 int lc_color_changed_count = 0;
 int startupSpeedCount = 4;
@@ -226,6 +234,7 @@ void setup(){
   pinMode(greenLedPin, OUTPUT);
   pinMode(blueLedPin, OUTPUT);
   initVars(0);
+  runMode = RM_HALTED;
 }
 
 void initVars(int orderIndexIn)
@@ -245,13 +254,6 @@ void halt()
   runMode = RM_HALTED;
   stop();
 }
-
-LineColor last_known_lc = LC_UNKNOWN;
-boolean lastColor = false;
-Direction lastDirection = D_FORWARD;
-RunMode runMode = RM_FOLLOWING_LINE; 
-int lc_follow_index = 0;
-int lc_color_changed_count = 0;
 
 void loop()
 {
@@ -346,8 +348,8 @@ void loop()
   if (current_lc == LC_UNKNOWN || current_lc == LC_WHITE)
     check_lc = last_known_lc;
     
-//  Serial.print("LT_R = "); Serial.print(ltr);
-//  Serial.print(" LT_L = "); Serial.print(ltl);
+  Serial.print("LT_R = "); Serial.print(ltr);
+  Serial.print(" LT_L = "); Serial.print(ltl);
   Serial.print(" Color = ");
   if (current_lc == LC_BLACK)
     Serial.print("Black");
@@ -413,15 +415,15 @@ void loop()
     }
   }
 
-// Logic to detect end blob, not fully tested or confident
-//  if (lc_follow_index == lc_follow_index_last)
-//  {
-//    if (ltl < 670 && ltr < 570)
-//    { // if last color and hit the color blob, then halt.
-//      halt();
-//      return;
-//    }  
-//  }
+ //Logic to detect end blob, not fully tested or confident
+  if (lc_follow_index == lc_follow_index_last)
+  {
+    if (ltl < 670 && ltr < 570)
+    { // if last color and hit the color blob, then halt.
+      halt();
+      return;
+    }  
+  }
 
   // Basic line following logic  
   if(shouldGoRight(check_lc, ltl, ltr)) { 
@@ -438,7 +440,7 @@ void loop()
 	      && current_lc != LC_UNKNOWN 
 	      && current_lc != lc_follow_order[orderIndex][lc_follow_index])
 	  {
-      // Color has changed, verify this over the next 2 iterations
+      // Color has changed, verify this over the next n iterations
       runMode = RM_VERIFYING_COLOR_CHANGED;
       Serial.println("runMode now VERIFYING_COLOR_CHANGED");
 	    lc_color_changed_count = 0;
@@ -501,17 +503,11 @@ void loop()
     }
     else 
     {
-      if (lc_follow_index == lc_follow_index_last)
-      {
-        // if at last color stop and halt program
-        Serial.println("Got white during last color, so stopping and halting.");
-        halt();
-        return;
-      }
 //      Serial.println("We're lost, halt.");
 //      halt();
 //      return;
       runMode = RM_SEARCHING_FOR_LINE;
+      stop();
       searchForLineCount = -20;
       Serial.println("We're really lost, runMode now SEARCHING_FOR_LINE");
     }
