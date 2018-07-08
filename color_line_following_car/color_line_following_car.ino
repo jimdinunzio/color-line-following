@@ -55,8 +55,8 @@ enum RunMode {
 
 // order of colored line following
 LineColor lc_follow_order[][4] = {{ LC_BLACK, LC_RED, LC_BLUE, LC_GREEN },
-                                  { LC_BLUE, LC_RED, LC_GREEN, LC_BLACK}, 
-                                  { LC_GREEN, LC_BLUE, LC_RED, LC_BLACK }}; 
+                                  { LC_RED, LC_BLUE, LC_GREEN}, 
+                                  { LC_BLUE, LC_GREEN}}; 
 
 int lc_follow_index_last = sizeof(lc_follow_order[0]) / sizeof(LineColor) - 1;
 
@@ -64,10 +64,12 @@ int lc_follow_index_last = sizeof(lc_follow_order[0]) / sizeof(LineColor) - 1;
 #define isItRed(r, g, b) ((r) >= 128 && (r) - (g) > 30)
 #define isItBlue(r, g, b) ((b) >= 128)
 #define isItGreen(r, g, b) ((g) >= 100 && (g) - (r) > 30)
-#define isItBlack(c) ((c) < 150)
+#define isItBlack(c) ((c) < 127)
 #define isItWhite(c) ((c) > 900)
 
 #define MinNumLoopItersVerifyColorChanged 2
+#define MinNumLoopItersVerifyLost 3
+#define MinNumForwardsForNewColor 5
 // Pins
 // Analog
 #define AnalogLTL A0
@@ -114,14 +116,14 @@ bool shouldGoRight(LineColor color, int ltl, int ltr)
       result = ltr < 530;
       break;
     case LC_BLUE:
-      result = ltr < 660 && ltl > 700;
+      result = ltr < 650 && ltl > 700;
       break;
     default:  // Fall through
     case LC_RED:
-      result = ltr < 720 && ltl > 728;
+      result = ltr < 710 && ltl > 728;
       break;
     case LC_GREEN:
-      result = ltr < 660 && ltl > 730;
+      result = ltr < 650 && ltl > 730;
       break;
   }
   return result;
@@ -136,11 +138,11 @@ bool shouldGoLeft(LineColor color, int ltl, int ltr)
       result = ltl < 660;
       break;
     case LC_BLUE:
-      result = ltl < 720 && ltr > 650;
+      result = ltl < 710 && ltr > 650;
       break;
     default:  // Fall through
     case LC_RED:
-      result = ltl < 740 && ltr > 670;
+      result = ltl < 730 && ltr > 670;
       break;
     case LC_GREEN:
       result = ltl < 710 && ltr > 670;
@@ -151,20 +153,15 @@ bool shouldGoLeft(LineColor color, int ltl, int ltr)
 
 Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_2_4MS, TCS34725_GAIN_4X);
 
-
 #define carStartupSpeed 90
 #define carSpeed 85
-#define carTurningSpeed 150
-#define carSearchTurningSpeed 170
-#define carLostLineTurningSpeed 170
+#define carTurningSpeed 160
+#define carSearchTurningSpeed 160
+#define carLostLineTurningSpeed 160
 
-// For full battery
-//#define carStartupSpeed 90
-//#define carSpeed 70
-//#define carTurningSpeed 135
-//#define carSearchTurningSpeed 146
-
+bool debug = false;
 Direction lastDirection = D_FORWARD;
+int newColorForwardCount = 0;
 
 void forward(int speedIn){
   analogWrite(ENA, speedIn);
@@ -174,7 +171,9 @@ void forward(int speedIn){
   digitalWrite(IN3, LOW);
   digitalWrite(IN4, HIGH);
   lastDirection = D_FORWARD;
-  Serial.println("go forward!");
+  if (debug)
+    Serial.println("go forward!");
+  newColorForwardCount++;
 }
 
 void back(){
@@ -185,7 +184,8 @@ void back(){
   digitalWrite(IN3, HIGH);
   digitalWrite(IN4, LOW);
   lastDirection = D_BACK;
-  Serial.println("go back!");
+  if (debug)
+    Serial.println("go back!");
 }
 
 void left(int speed){
@@ -196,7 +196,8 @@ void left(int speed){
   digitalWrite(IN3, LOW);
   digitalWrite(IN4, HIGH);
   lastDirection = D_LEFT;
-  Serial.println("go left!");
+  if (debug)
+    Serial.println("go left!");
 }
 
 void right(int speed){
@@ -207,13 +208,15 @@ void right(int speed){
   digitalWrite(IN3, HIGH);
   digitalWrite(IN4, LOW); 
   lastDirection = D_RIGHT;
-  Serial.println("go right!");
+  if (debug)
+    Serial.println("go right!");
 } 
 
 void stop(){
    digitalWrite(ENA, LOW);
    digitalWrite(ENB, LOW);
-   Serial.println("Stop!");
+   if (debug)
+     Serial.println("Stop!");
 } 
 
 // initialize last known line color to first in the sequence
@@ -224,10 +227,12 @@ int lc_follow_index = 0;
 int lc_color_changed_count = 0;
 int startupSpeedCount = 4;
 int searchForLineCount = 0;
+int lostCount = 0;
+Direction searchDirection = D_RIGHT;
 
 void setup(){
   Serial.begin(9600);
-
+  randomSeed(analogRead(3));
   if (tcs.begin()) {
     Serial.println("Found sensor");
   } else {
@@ -254,6 +259,9 @@ void initVars(int orderIndexIn)
   lc_color_changed_count = 0;
   startupSpeedCount = 4;
   searchForLineCount = 0;  
+  lostCount = 0;
+  searchDirection = random(2) == 0 ? D_RIGHT : D_LEFT;
+  newColorForwardCount = 0;
 }
 
 void halt()
@@ -308,6 +316,10 @@ void loop()
   {
     initVars(2);
   }
+  else if (cmd == 'd')
+  {
+    debug = !debug;
+  }
   if (runMode == RM_HALTED)
   {
     return;    
@@ -329,19 +341,23 @@ void loop()
   g = green; g /= sum;
   b = blue; b /= sum;
   r *= 256; g *= 256; b *= 256;
+  
   //Serial.print("\t");
   //Serial.print((int)r, HEX); Serial.print((int)g, HEX); Serial.print((int)b, HEX);
   //Serial.println();
-//
-//  Serial.print((int)r );
-//  Serial.print(" ");
-//  Serial.print((int)g);
-//  Serial.print(" "); 
-//  Serial.print((int)b );
-//  Serial.print(" ");
-//  Serial.print((int)clear);
-//  Serial.print(" ");
-//    
+
+  if (debug)
+  {
+    Serial.print((int)r );
+    Serial.print(" ");
+    Serial.print((int)g);
+    Serial.print(" "); 
+    Serial.print((int)b );
+    Serial.print(" ");
+    Serial.print((int)clear);
+    Serial.print(" ");
+  }
+   
   boolean detectedRed = isItRed(r, g, b);
   boolean detectedGreen = isItGreen(r, g, b);
   boolean detectedBlue = isItBlue(r, g, b);
@@ -384,18 +400,34 @@ void loop()
 //    printColor(last_known_lc);
 //    Serial.println("");
     check_lc = last_known_lc;
+  } 
+  else // if not white, clear out lost count
+  {
+    lostCount = 0;
   }
-  Serial.print("LT_R = "); Serial.print(ltr);
-  Serial.print(" LT_L = "); Serial.print(ltl);
-  printColor(current_lc);
-  Serial.print(":  ");
+
+  if (debug)
+  {
+    Serial.print("LT_R = "); Serial.print(ltr);
+    Serial.print(" LT_L = "); Serial.print(ltl);
+    printColor(current_lc);
+    Serial.print(":  ");
+  }
   
   if (runMode == RM_SEARCHING_FOR_COLOR)
   {
 	  if (current_lc != lc_follow_order[orderIndex][lc_follow_index])
 	  {
-	    Serial.println("Searching, but have not found next color.");
-      right(carSearchTurningSpeed);
+	    if (debug)
+	      Serial.println("Searching, but have not found next color.");
+      if (searchDirection == D_RIGHT)
+      {
+        right(carSearchTurningSpeed);
+      }
+      else
+      {
+        left(carSearchTurningSpeed);
+      }
 	    return;
 	  }
 	  else  // current_lc == lc_follow_order[orderIndex][lc_follow_index] 
@@ -403,7 +435,10 @@ void loop()
       // we've found the new color, return to line following mode
       runMode = RM_FOLLOWING_LINE;
       last_known_lc = lc_follow_order[orderIndex][lc_follow_index]; 
-      Serial.println("FOUND next color, now returning to line following mode.");
+      Serial.print("FOUND next color: ");
+      printColor(current_lc);
+      Serial.println(". Now returning to line following mode.");
+      newColorForwardCount = 0;
       startupSpeedCount = 2;    
       // fall through to normal line following code
 	  }
@@ -412,20 +447,15 @@ void loop()
   {
     if (current_lc != lc_follow_order[orderIndex][lc_follow_index])
     {
-      Serial.print(" Searching, but have not found line.");
-      searchForLineCount++;
-      if (searchForLineCount < 0)
+      if (debug)
+        Serial.print(" Searching, but have not found line.");
+      if (searchDirection == D_RIGHT)
       {
         right(carLostLineTurningSpeed);
       }
-      else if (searchForLineCount < 50)
+      else
       {
         left(carLostLineTurningSpeed);
-      } 
-      else // searchForLineCount > 50
-      { 
-        searchForLineCount = -50;
-        right(carLostLineTurningSpeed);
       }
       return;
     }
@@ -452,8 +482,9 @@ void loop()
 
   // Basic line following logic  
   if(shouldGoRight(check_lc, ltl, ltr)) { 
-    if (current_lc != LC_WHITE && followingWrongLine(current_lc))
+    if (current_lc != LC_WHITE && followingWrongLine(current_lc) && newColorForwardCount >= MinNumForwardsForNewColor)
     {
+      newColorForwardCount = 0;
       runMode = RM_VERIFYING_COLOR_CHANGED;
       Serial.println("runMode now VERIFYING_COLOR_CHANGED");
       lc_color_changed_count = 0;
@@ -465,8 +496,9 @@ void loop()
     }
   }   
   else if(shouldGoLeft(check_lc, ltl, ltr)) {
-    if (current_lc != LC_WHITE && followingWrongLine(current_lc))
+    if (current_lc != LC_WHITE && followingWrongLine(current_lc) && newColorForwardCount >= MinNumForwardsForNewColor)
     {
+      newColorForwardCount = 0;
       runMode = RM_VERIFYING_COLOR_CHANGED;
       Serial.println("runMode now VERIFYING_COLOR_CHANGED");
       lc_color_changed_count = 0;
@@ -477,10 +509,11 @@ void loop()
       left(carTurningSpeed);
     }
   }
-  else if(current_lc != LC_WHITE) 
+  else if( /* not left nor right && */ current_lc != LC_WHITE) 
   {
-	  if (followingWrongLine(current_lc))
+	  if (followingWrongLine(current_lc) && newColorForwardCount >= MinNumForwardsForNewColor)
 	  {
+      newColorForwardCount = 0;
       // Color has changed, verify this over the next n iterations
       runMode = RM_VERIFYING_COLOR_CHANGED;
       Serial.println("runMode now VERIFYING_COLOR_CHANGED");
@@ -498,9 +531,12 @@ void loop()
 		      if (lc_color_changed_count >= MinNumLoopItersVerifyColorChanged)
 		      {
 			      runMode = RM_SEARCHING_FOR_COLOR;
-			      Serial.println("runMode now SEARCHING_FOR_COLOR");
-			      lc_follow_index++;
+            searchDirection = random(2) == 0 ? D_RIGHT : D_LEFT;
+            lc_follow_index++;
             lc_color_changed_count = 0;
+			      Serial.print("runMode now SEARCHING_FOR_COLOR: ");
+            printColor(lc_follow_order[orderIndex][lc_follow_index]);
+            Serial.println();
 			      return;
           }
 		    }
@@ -533,23 +569,32 @@ void loop()
     // if detected white we are lost, so go in the last non-forward direction we were going
     if (lastDirection == D_RIGHT)
     {
-      Serial.println("We're lost so trying last direction.");
+      Serial.println("We're lost so trying last direction, right.");
       right(carTurningSpeed);
+      lostCount = 0;
     }
     else if (lastDirection == D_LEFT) 
     {
-      Serial.println("We're lost so trying last direction.");
+      Serial.println("We're lost so trying last direction, left.");
       left(carTurningSpeed);
+      lostCount = 0;
     }
     else 
     {
-//      Serial.println("We're lost, halt.");
-//      halt();
-//      return;
-      runMode = RM_SEARCHING_FOR_LINE;
-      //stop();
-      searchForLineCount = -25;
-      Serial.println("We're really lost, runMode now SEARCHING_FOR_LINE");
+      if (lostCount > MinNumLoopItersVerifyLost )
+      {
+        runMode = RM_SEARCHING_FOR_LINE;
+        searchDirection = random(2) == 0 ? D_RIGHT : D_LEFT;
+        //stop();
+        searchForLineCount = -25;
+        Serial.println("We're really lost, runMode now SEARCHING_FOR_LINE");
+        lostCount = 0;
+      }
+      else
+      {
+        lostCount++;
+        Serial.println("We might be lost, lostCount++");
+      }
     }
   }
 }
