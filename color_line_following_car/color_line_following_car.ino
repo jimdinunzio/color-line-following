@@ -55,19 +55,19 @@ enum RunMode {
 
 // order of colored line following
 LineColor lc_follow_order[][4] = {{ LC_BLACK, LC_RED, LC_BLUE, LC_GREEN },
-                                  { LC_RED, LC_BLUE, LC_GREEN}, 
-                                  { LC_BLUE, LC_GREEN}}; 
+                                  { LC_RED, LC_BLUE, LC_GREEN, LC_GREEN }, 
+                                  { LC_BLUE, LC_GREEN, LC_GREEN, LC_GREEN}}; 
 
 int lc_follow_index_last = sizeof(lc_follow_order[0]) / sizeof(LineColor) - 1;
 
 // Line color detection logic
 #define isItRed(r, g, b) ((r) >= 128 && (r) - (g) > 30)
 #define isItBlue(r, g, b) ((b) >= 128)
-#define isItGreen(r, g, b) ((g) >= 100 && (g) - (r) > 30)
+#define isItGreen(r, g, b) ((g) >= 100 && (g) - (r) > 30 && (b < 105))
 #define isItBlack(c) ((c) < 127)
 #define isItWhite(c) ((c) > 900)
 
-#define MinNumLoopItersVerifyColorChanged 2
+#define MinNumLoopItersVerifyColorChanged 3
 #define MinNumLoopItersVerifyLost 3
 #define MinNumForwardsForNewColor 5
 // Pins
@@ -153,11 +153,17 @@ bool shouldGoLeft(LineColor color, int ltl, int ltr)
 
 Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_2_4MS, TCS34725_GAIN_4X);
 
-#define carStartupSpeed 90
-#define carSpeed 85
-#define carTurningSpeed 160
-#define carSearchTurningSpeed 160
-#define carLostLineTurningSpeed 160
+#define carStartupSpeed 100
+#define carSpeed 95
+#define carTurningSpeed 170
+#define carSearchTurningSpeed 170
+#define carLostLineTurningSpeed 170
+
+//#define carStartupSpeed 90
+//#define carSpeed 85
+//#define carTurningSpeed 160
+//#define carSearchTurningSpeed 170
+//#define carLostLineTurningSpeed 170
 
 bool debug = false;
 Direction lastDirection = D_FORWARD;
@@ -355,7 +361,7 @@ void loop()
     Serial.print((int)b );
     Serial.print(" ");
     Serial.print((int)clear);
-    Serial.print(" ");
+    Serial.println(" ");
   }
    
   boolean detectedRed = isItRed(r, g, b);
@@ -482,9 +488,11 @@ void loop()
 
   // Basic line following logic  
   if(shouldGoRight(check_lc, ltl, ltr)) { 
-    if (current_lc != LC_WHITE && followingWrongLine(current_lc) && newColorForwardCount >= MinNumForwardsForNewColor)
+    if (current_lc != LC_WHITE 
+        && followingWrongLine(current_lc) 
+        && newColorForwardCount >= MinNumForwardsForNewColor
+        && lc_follow_index < lc_follow_index_last)
     {
-      newColorForwardCount = 0;
       runMode = RM_VERIFYING_COLOR_CHANGED;
       Serial.println("runMode now VERIFYING_COLOR_CHANGED");
       lc_color_changed_count = 0;
@@ -496,9 +504,11 @@ void loop()
     }
   }   
   else if(shouldGoLeft(check_lc, ltl, ltr)) {
-    if (current_lc != LC_WHITE && followingWrongLine(current_lc) && newColorForwardCount >= MinNumForwardsForNewColor)
+    if (current_lc != LC_WHITE 
+        && followingWrongLine(current_lc) 
+        && newColorForwardCount >= MinNumForwardsForNewColor
+        && lc_follow_index < lc_follow_index_last)
     {
-      newColorForwardCount = 0;
       runMode = RM_VERIFYING_COLOR_CHANGED;
       Serial.println("runMode now VERIFYING_COLOR_CHANGED");
       lc_color_changed_count = 0;
@@ -511,9 +521,10 @@ void loop()
   }
   else if( /* not left nor right && */ current_lc != LC_WHITE) 
   {
-	  if (followingWrongLine(current_lc) && newColorForwardCount >= MinNumForwardsForNewColor)
+	  if (followingWrongLine(current_lc) 
+	      && newColorForwardCount >= MinNumForwardsForNewColor
+	      && lc_follow_index < lc_follow_index_last)
 	  {
-      newColorForwardCount = 0;
       // Color has changed, verify this over the next n iterations
       runMode = RM_VERIFYING_COLOR_CHANGED;
       Serial.println("runMode now VERIFYING_COLOR_CHANGED");
@@ -532,11 +543,12 @@ void loop()
 		      {
 			      runMode = RM_SEARCHING_FOR_COLOR;
             searchDirection = random(2) == 0 ? D_RIGHT : D_LEFT;
-            lc_follow_index++;
+            lc_follow_index = min(lc_follow_index + 1, lc_follow_index_last);
             lc_color_changed_count = 0;
 			      Serial.print("runMode now SEARCHING_FOR_COLOR: ");
             printColor(lc_follow_order[orderIndex][lc_follow_index]);
-            Serial.println();
+            Serial.print(", index = ");
+            Serial.println(lc_follow_index);
 			      return;
           }
 		    }
