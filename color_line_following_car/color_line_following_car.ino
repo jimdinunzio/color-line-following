@@ -169,6 +169,25 @@ bool debug = false;
 Direction lastDirection = D_FORWARD;
 int newColorForwardCount = 0;
 
+const int interruptPin = 2;
+volatile boolean state = false;
+
+//Interrupt Service Routine
+void isr() 
+{
+  state = true;
+}
+
+/* tcs.getRawData() does a delay(Integration_Time) after the sensor readout.
+We don't need to wait for the next integration cycle because we receive an interrupt when the integration cycle is complete*/
+void getRawData_noDelay(uint16_t *r, uint16_t *g, uint16_t *b, uint16_t *c)
+{
+  *c = tcs.read16(TCS34725_CDATAL);
+  *r = tcs.read16(TCS34725_RDATAL);
+  *g = tcs.read16(TCS34725_GDATAL);
+  *b = tcs.read16(TCS34725_BDATAL);
+}
+
 void forward(int speedIn){
   analogWrite(ENA, speedIn);
   analogWrite(ENB, speedIn);
@@ -237,6 +256,9 @@ int lostCount = 0;
 Direction searchDirection = D_RIGHT;
 
 void setup(){
+  pinMode(interruptPin, INPUT_PULLUP); //TCS interrupt output is Active-LOW and Open-Drain
+  attachInterrupt(digitalPinToInterrupt(interruptPin), isr, FALLING);
+
   Serial.begin(9600);
   randomSeed(analogRead(3));
   if (tcs.begin()) {
@@ -245,6 +267,10 @@ void setup(){
     Serial.println("No TCS34725 found ... check your connections");
     while (1); // halt!
   }
+
+  // Set persistence filter to generate an interrupt for every RGB Cycle, regardless of the integration limits
+  tcs.write8(TCS34725_PERS, TCS34725_PERS_NONE); 
+  tcs.setInterrupt(true);
   
   // use these three pins to drive an LED
   pinMode(redLedPin, OUTPUT);
@@ -252,7 +278,6 @@ void setup(){
   pinMode(blueLedPin, OUTPUT);
   initVars(0);
   runMode = RM_HALTED;
-  tcs.setInterrupt(false);
 }
 
 void initVars(int orderIndexIn)
@@ -300,10 +325,11 @@ bool followingWrongLine(LineColor current_lc)
           && current_lc != lc_follow_order[orderIndex][lc_follow_index]);
 }
 
+uint16_t clear = 0, red = 0, green = 0, blue = 0;
+
 void loop()
 {
   LineColor current_lc = LC_UNKNOWN;
-  uint16_t clear, red, green, blue;
 
   char cmd = Serial.read();
   if (cmd == 's') 
@@ -330,11 +356,14 @@ void loop()
   {
     return;    
   }
-  
-//  tcs.setInterrupt(false);      // turn on LED
-  tcs.getRawData(&red, &green, &blue, &clear);
-//  tcs.setInterrupt(true);  // turn off LED
-  
+
+  if (state)
+  {
+    getRawData_noDelay(&red, &green, &blue, &clear);
+    tcs.clearInterrupt();
+    state = false;
+  }
+    
   //Serial.print("C:\t"); Serial.print(clear);
   //Serial.print("\tR:\t"); Serial.print(red);
   //Serial.print("\tG:\t"); Serial.print(green);
@@ -393,9 +422,9 @@ void loop()
     current_lc = last_known_lc;
 
   int ltl, ltr;
-  delayMicroseconds(150);
+  //delayMicroseconds(150);
   ltl = LT_L;
-  delayMicroseconds(150);
+  //delayMicroseconds(150);
   ltr = LT_R;
 
   LineColor check_lc = current_lc;
@@ -469,6 +498,7 @@ void loop()
     {
       // we've recovered the line!
       searchForLineCount = 0;
+      newColorForwardCount = 0;
       runMode = RM_FOLLOWING_LINE;
       Serial.println("FOUND line, resuming line following.");
       startupSpeedCount = 2;    
@@ -501,6 +531,10 @@ void loop()
     else
     {
       right(carTurningSpeed);
+      do {
+        ltl = LT_L;
+        ltr = LT_R;
+      } while (shouldGoRight(check_lc, ltl, ltr));
     }
   }   
   else if(shouldGoLeft(check_lc, ltl, ltr)) {
@@ -517,6 +551,10 @@ void loop()
     else
     {
       left(carTurningSpeed);
+      do {
+        ltl = LT_L;
+        ltr = LT_R;
+      } while (shouldGoLeft(check_lc, ltl, ltr));
     }
   }
   else if( /* not left nor right && */ current_lc != LC_WHITE) 
