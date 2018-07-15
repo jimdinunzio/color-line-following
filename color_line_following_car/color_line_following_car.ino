@@ -159,12 +159,6 @@ Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_2_4MS, TCS347
 #define carSearchTurningSpeed 170
 #define carLostLineTurningSpeed 170
 
-//#define carStartupSpeed 90
-//#define carSpeed 85
-//#define carTurningSpeed 160
-//#define carSearchTurningSpeed 170
-//#define carLostLineTurningSpeed 170
-
 bool debug = false;
 Direction lastDirection = D_FORWARD;
 
@@ -256,8 +250,9 @@ uint16_t clear = 0, red = 0, green = 0, blue = 0;
 int startTime = 0;
 
 void setup(){
-//  pinMode(interruptPin, INPUT_PULLUP); //TCS interrupt output is Active-LOW and Open-Drain
-//  attachInterrupt(digitalPinToInterrupt(interruptPin), isr, FALLING);
+  // uncomment the following to try using the interrupt feature of the TCS34725 
+// pinMode(interruptPin, INPUT_PULLUP); //TCS interrupt output is Active-LOW and Open-Drain
+// attachInterrupt(digitalPinToInterrupt(interruptPin), isr, FALLING);
 
   Serial.begin(9600);
   randomSeed(analogRead(3));
@@ -269,6 +264,7 @@ void setup(){
   }
 
   // Set persistence filter to generate an interrupt for every RGB Cycle, regardless of the integration limits
+  // uncomment the following to try using the interrupt feature of the TCS34725 
 //  tcs.write8(TCS34725_PERS, TCS34725_PERS_NONE); 
 //  tcs.setInterrupt(true);
   
@@ -329,7 +325,15 @@ bool followingWrongLine(LineColor current_lc)
 void loop()
 {
   LineColor current_lc = LC_UNKNOWN;
-  
+
+  // uncomment the following to try using the interrupt feature of the TCS34725 
+//  if (state)
+//  {
+//    getRawData_noDelay(&red, &green, &blue, &clear);
+//    tcs.clearInterrupt();
+//    state = false;
+//  }
+
   char cmd = Serial.read();
   if (cmd == 's') 
   {
@@ -353,23 +357,12 @@ void loop()
   }
   if (runMode == RM_HALTED)
   {
-//    if (state)
-//    {
-//      getRawData_noDelay(&red, &green, &blue, &clear);
-//      tcs.clearInterrupt();
-//      state = false;
-//    }
     return;
   }
 
-//  if (state)
-//  {
-//    getRawData_noDelay(&red, &green, &blue, &clear);
-//    tcs.clearInterrupt();
-//    state = false;
-//  }
-
-    tcs.getRawData(&red, &green, &blue, &clear);
+  // comment out the following if using the interrupt feature of the TCS34725
+  tcs.getRawData(&red, &green, &blue, &clear);
+  
   //Serial.print("C:\t"); Serial.print(clear);
   //Serial.print("\tR:\t"); Serial.print(red);
   //Serial.print("\tG:\t"); Serial.print(green);
@@ -428,9 +421,7 @@ void loop()
     current_lc = last_known_lc;
 
   int ltl, ltr;
-  //delayMicroseconds(150);
   ltl = LT_L;
-  //delayMicroseconds(150);
   ltr = LT_R;
 
   LineColor check_lc = current_lc;
