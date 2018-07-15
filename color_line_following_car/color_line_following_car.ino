@@ -63,7 +63,7 @@ int lc_follow_index_last = sizeof(lc_follow_order[0]) / sizeof(LineColor) - 1;
 // Line color detection logic
 #define isItRed(r, g, b) ((r) >= 128 && (r) - (g) > 30)
 #define isItBlue(r, g, b) ((b) >= 128)
-#define isItGreen(r, g, b) ((g) >= 100 && (g) - (r) > 30 && (b < 105))
+#define isItGreen(r, g, b) ((g) >= 115 && (g) - (r) > 30 && (b < 105))
 #define isItBlack(c) ((c) < 127)
 #define isItWhite(c) ((c) > 900)
 
