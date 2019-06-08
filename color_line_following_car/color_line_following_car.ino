@@ -28,6 +28,21 @@ SOFTWARE.
 
 #include <Wire.h>
 #include "Adafruit_TCS34725.h"
+#include <IRremote.h>
+
+////////// IR REMOTE CODES //////////
+#define F 16736925  // FORWARD
+#define B 16754775  // BACK
+#define L 16720605  // LEFT
+#define R 16761405  // RIGHT
+#define S 16712445  // STOP
+#define UNKNOWN_F 5316027     // FORWARD
+#define UNKNOWN_B 2747854299  // BACK
+#define UNKNOWN_L 1386468383  // LEFT
+#define UNKNOWN_R 553536955   // RIGHT
+#define UNKNOWN_S 3622325019  // STOP
+
+#define RECV_PIN  12
 
 enum LineColor {
   LC_BLACK,
@@ -99,7 +114,7 @@ int lc_follow_index_last = sizeof(lc_follow_order[0]) / sizeof(LineColor) - 1;
 // greenLed -> green wire
 // blueLed -> blue wire
 #define redLedPin 3
-#define greenLedPin 12
+#define greenLedPin 10
 #define blueLedPin 13
 // for a common anode LED, connect the common pin to +5V -> red wire
 // for common cathode, connect the common to ground
@@ -249,6 +264,11 @@ Direction searchDirection = D_RIGHT;
 uint16_t clear = 0, red = 0, green = 0, blue = 0;
 int startTime = 0;
 
+IRrecv irrecv(RECV_PIN);
+decode_results results;
+unsigned long val;
+
+
 void setup(){
   // uncomment the following to try using the interrupt feature of the TCS34725 
 // pinMode(interruptPin, INPUT_PULLUP); //TCS interrupt output is Active-LOW and Open-Drain
@@ -272,6 +292,7 @@ void setup(){
   pinMode(redLedPin, OUTPUT);
   pinMode(greenLedPin, OUTPUT);
   pinMode(blueLedPin, OUTPUT);
+  irrecv.enableIRIn();  
   initVars(0);
   runMode = RM_HALTED;
 }
@@ -334,27 +355,45 @@ void loop()
 //    state = false;
 //  }
 
-  char cmd = Serial.read();
-  if (cmd == 's') 
-  {
-    halt();
+  if (irrecv.decode(&results)){ 
+    val = results.value;
+    Serial.println(val);
+    irrecv.resume();
+    switch(val){
+      case F: 
+      case UNKNOWN_F: initVars(0); break;
+      case B: 
+      case UNKNOWN_B: initVars(1); break;
+      case L: 
+      case UNKNOWN_L: debug = !debug; break;
+      case R: 
+      case UNKNOWN_R: break;
+      case S: 
+      case UNKNOWN_S: halt(); break;
+      default: break;
+    }
   }
-  else if (cmd == '1' || cmd == 'r')
-  {
-    initVars(0);
-  }
-  else if (cmd == '2')
-  {
-    initVars(1);
-  }
-  else if (cmd == '3')
-  {
-    initVars(2);
-  }
-  else if (cmd == 'd')
-  {
-    debug = !debug;
-  }
+//  char cmd = Serial.read();
+//  if (cmd == 's') 
+//  {
+//    halt();
+//  }
+//  else if (cmd == '1' || cmd == 'r')
+//  {
+//    initVars(0);
+//  }
+//  else if (cmd == '2')
+//  {
+//    initVars(1);
+//  }
+//  else if (cmd == '3')
+//  {
+//    initVars(2);
+//  }
+//  else if (cmd == 'd')
+//  {
+//    debug = !debug;
+//  }
   if (runMode == RM_HALTED)
   {
     return;
@@ -578,7 +617,8 @@ void loop()
         if (current_lc != lc_follow_order[orderIndex][lc_follow_index])
 		    {
           lc_color_changed_count++;
-		      Serial.println("color changed count ++");
+          if (debug)
+		        Serial.println("color changed count ++");
 		      if (lc_color_changed_count >= MinNumLoopItersVerifyColorChanged)
 		      {
 			      runMode = RM_SEARCHING_FOR_COLOR;
@@ -587,8 +627,11 @@ void loop()
             lc_color_changed_count = 0;
 			      Serial.print("runMode now SEARCHING_FOR_COLOR: ");
             printColor(lc_follow_order[orderIndex][lc_follow_index]);
-            Serial.print(", index = ");
-            Serial.println(lc_follow_index);
+            if (debug)
+            {
+              Serial.print(", index = ");
+              Serial.println(lc_follow_index);
+            }
 			      return;
           }
 		    }
@@ -597,7 +640,8 @@ void loop()
           // false alarm color did not stay changed
 		      lc_color_changed_count = 0;
 		      runMode = RM_FOLLOWING_LINE;
-		      Serial.println("false alarm, runMode restored to FOLLOWING_LINE");
+		      if (debug)
+		        Serial.println("false alarm, runMode restored to FOLLOWING_LINE");
           // fall through and continue forward
         }
 	    }
@@ -644,9 +688,9 @@ void loop()
       else
       {
         lostCount++;
-        Serial.println("We might be lost, lostCount++");
+        if (debug)
+          Serial.println("We might be lost, lostCount++");
       }
     }
   }
 }
-
