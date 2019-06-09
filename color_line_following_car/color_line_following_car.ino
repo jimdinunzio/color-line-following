@@ -168,11 +168,12 @@ bool shouldGoLeft(LineColor color, int ltl, int ltr)
 
 Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_2_4MS, TCS34725_GAIN_4X);
 
-#define carStartupSpeed 100
-#define carSpeed 95
-#define carTurningSpeed 170
-#define carSearchTurningSpeed 170
-#define carLostLineTurningSpeed 170
+#define carStartupSpeed 115
+#define carSpeed 100
+#define carTurningSpeed 200
+#define carSearchTurningSpeed 200
+#define carLostLineTurningSpeed 200
+#define carCurveInRoadSpeed 80
 
 bool debug = false;
 Direction lastDirection = D_FORWARD;
@@ -654,7 +655,7 @@ void loop()
     }
     else
     {
-      forward(carSpeed);
+      forward(lastDirection != D_FORWARD ? carCurveInRoadSpeed : carSpeed);
     }
       last_known_lc = current_lc;
   } 
